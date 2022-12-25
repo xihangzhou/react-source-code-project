@@ -77,7 +77,7 @@
   var ClassComponent = 1;
   var IndeterminateComponent = 2; // Before we know whether it is function or class
 
-  var HostRoot = 3; // Root of a host tree. Could be nested inside another node.
+  var HostRoot = 3; // Root of a host tree. Could be nested inside another node. 一颗fiber tree的根节点
 
   var HostPortal = 4; // A subtree. Could be an entry point to a different renderer.
 
@@ -5488,6 +5488,7 @@
   var nextRetryLane = RetryLane1;
 
   function getHighestPriorityLanes(lanes) {
+    // 返回一个lanes中最高优先级的lane
     switch (getHighestPriorityLane(lanes)) {
       case SyncHydrationLane:
         return SyncHydrationLane;
@@ -5569,14 +5570,17 @@
     var pingedLanes = root.pingedLanes; // Do not work on any idle work until all the non-idle work has finished,
     // even if the work is suspended.
 
-    var nonIdlePendingLanes = pendingLanes & NonIdleLanes;
+    var nonIdlePendingLanes = pendingLanes & NonIdleLanes; // 去除了NonIdleLanes的lanes
 
     if (nonIdlePendingLanes !== NoLanes) {
+      // 如果有nonIdlePendingLanes
       var nonIdleUnblockedLanes = nonIdlePendingLanes & ~suspendedLanes;
 
       if (nonIdleUnblockedLanes !== NoLanes) {
+        // 如果有除了idlelane,suspendlane之外的其他的lane,就从这里面找最高优先级的lanes
         nextLanes = getHighestPriorityLanes(nonIdleUnblockedLanes);
       } else {
+        //否则从pingedlane和nonIdlePendingLanes中找
         var nonIdlePingedLanes = nonIdlePendingLanes & pingedLanes;
 
         if (nonIdlePingedLanes !== NoLanes) {
@@ -5605,13 +5609,15 @@
     // higher priority.
 
 
-    if (wipLanes !== NoLanes && wipLanes !== nextLanes && // If we already suspended with a delay, then interrupting is fine. Don't
+    if ( // 如果有正在进行的lanes,并且这个正在进行的lane不为nextLanes(最高优先级的lane),并且这个wipLane也没有被挂起
+    wipLanes !== NoLanes && wipLanes !== nextLanes && // If we already suspended with a delay, then interrupting is fine. Don't
     // bother waiting until the root is complete.
     (wipLanes & suspendedLanes) === NoLanes) {
       var nextLane = getHighestPriorityLane(nextLanes);
       var wipLane = getHighestPriorityLane(wipLanes);
 
-      if ( // Tests whether the next lane is equal or lower priority than the wip
+      if ( // 如果nextlane的优先级和wipLane相等或者wipLane优先级更高应该返回wipLanes
+      // Tests whether the next lane is equal or lower priority than the wip
       // one. This works because the bits decrease in priority as you go left.
       nextLane >= wipLane || // Default priority updates should not interrupt transition updates. The
       // only difference between default updates and transition updates is that
@@ -5652,7 +5658,7 @@
     // time we apply the entanglement.
 
 
-    var entangledLanes = root.entangledLanes;
+    var entangledLanes = root.entangledLanes; // 先不管这个entangledLanes
 
     if (entangledLanes !== NoLanes) {
       var entanglements = root.entanglements;
@@ -5688,6 +5694,7 @@
   }
 
   function computeExpirationTime(lane, currentTime) {
+    // 根据一个lane的性质和现在的时间计算出expirationTime过期时间
     switch (lane) {
       case SyncHydrationLane:
       case SyncLane:
@@ -5757,8 +5764,10 @@
     // the earliest expiration time on the root. Then use that to quickly bail out
     // of this function.
     var pendingLanes = root.pendingLanes;
-    var suspendedLanes = root.suspendedLanes;
-    var pingedLanes = root.pingedLanes;
+    var suspendedLanes = root.suspendedLanes; // 挂起的lanes
+
+    var pingedLanes = root.pingedLanes; // 暂时还不知道这个linedLanes是用来干嘛的
+
     var expirationTimes = root.expirationTimes; // Iterate through the pending lanes and check if we've reached their
     // expiration time. If so, we'll assume the update is being starved and mark
     // it as expired to force it to finish.
@@ -5767,14 +5776,17 @@
     // to unwrap uncached promises.
     // TODO: Write a test for this
 
-    var lanes = pendingLanes & ~RetryLanes;
+    var lanes = pendingLanes & ~RetryLanes; // 去掉retryLanes
 
     while (lanes > 0) {
-      var index = pickArbitraryLaneIndex(lanes);
-      var lane = 1 << index;
+      var index = pickArbitraryLaneIndex(lanes); // 获取lanes长度作为index
+
+      var lane = 1 << index; // 获取lanes中的最高位
+
       var expirationTime = expirationTimes[index];
 
       if (expirationTime === NoTimestamp) {
+        // 如果这个lane没有expirationTime就给一个expirationTime
         // Found a pending lane with no expiration time. If it's not suspended, or
         // if it's pinged, assume it's CPU-bound. Compute a new expiration time
         // using the current time.
@@ -5783,11 +5795,12 @@
           expirationTimes[index] = computeExpirationTime(lane, currentTime);
         }
       } else if (expirationTime <= currentTime) {
+        // 否则就把这个lane加入expiredLanes中标记过期
         // This lane expired
         root.expiredLanes |= lane;
       }
 
-      lanes &= ~lane;
+      lanes &= ~lane; // 然后在lanes中去除这个最高位的lane
     }
   } // This returns the highest priority pending lanes regardless of whether they
   // are suspended.
@@ -5868,7 +5881,8 @@
     return lane;
   }
   function getHighestPriorityLane(lanes) {
-    return lanes & -lanes;
+    // 获取一个lanes中最高优先级的lane，即最低位的lane
+    return lanes & -lanes; // 二进制表示负数是先取反码再+1, 所以取&了过后可以做到取最低位的lane
   }
   function pickArbitraryLane(lanes) {
     // This wrapper function gets inlined. Only exists so to communicate that it
@@ -5879,6 +5893,7 @@
   }
 
   function pickArbitraryLaneIndex(lanes) {
+    // 传入一个lanes，返回从第一个不为0开始的长度
     return 31 - clz32(lanes);
   }
 
@@ -5921,8 +5936,10 @@
 
     return laneMap;
   }
-  function markRootUpdated(root, updateLane, eventTime) {
-    root.pendingLanes |= updateLane; // If there are any suspended transitions, it's possible this new update
+  function markRootUpdated( // 把fiberroot上的pendingLanes加入这次更新的lane，并且更新这次updateLane的evetTimes
+  root, updateLane, eventTime) {
+    root.pendingLanes |= updateLane; // 更新优先级加入fiberRoot的pendingLanes，注意是通过|的关系。意味着pendingLanes存放的是fiberRoot中所有存在的优先级
+    // If there are any suspended transitions, it's possible this new update
     // could unblock them. Clear the suspended lanes so that we can try rendering
     // them again.
     //
@@ -5936,15 +5953,17 @@
     // way it could unblock a transition.
 
     if (updateLane !== IdleLane) {
+      // 下面两个lanes先不管
       root.suspendedLanes = NoLanes;
       root.pingedLanes = NoLanes;
     }
 
     var eventTimes = root.eventTimes;
-    var index = laneToIndex(updateLane); // We can always overwrite an existing timestamp because we prefer the most
+    var index = laneToIndex(updateLane); // 把一个优先级转换成一个唯一对应的下标
+    // We can always overwrite an existing timestamp because we prefer the most
     // recent event, and we assume time is monotonically increasing.
 
-    eventTimes[index] = eventTime;
+    eventTimes[index] = eventTime; // 更新这个优先级在这个fiberRoot上的最新的eventTime
   }
   function markRootSuspended(root, suspendedLanes) {
     root.suspendedLanes |= suspendedLanes;
@@ -6159,7 +6178,8 @@
     }
   }
 
-  var DiscreteEventPriority = SyncLane;
+  var DiscreteEventPriority = SyncLane; // 事件优先级中的最高优先级
+
   var ContinuousEventPriority = InputContinuousLane;
   var DefaultEventPriority = DefaultLane;
   var IdleEventPriority = IdleLane;
@@ -6186,25 +6206,30 @@
   function lowerEventPriority(a, b) {
     return a === 0 || a > b ? a : b;
   }
-  function isHigherEventPriority(a, b) {
+  function isHigherEventPriority( // a的优先级是否高于b
+  a, b) {
     return a !== 0 && a < b;
   }
   function lanesToEventPriority(lanes) {
+    // 将lane转换为事件优先级
     var lane = getHighestPriorityLane(lanes);
 
     if (!isHigherEventPriority(DiscreteEventPriority, lane)) {
+      // 如果lane比DiscreteEventPriority的优先级还高返回DiscreteEventPriority
       return DiscreteEventPriority;
     }
 
     if (!isHigherEventPriority(ContinuousEventPriority, lane)) {
+      // 比ContinuousEventPriority高返回ContinuousEventPriority
       return ContinuousEventPriority;
     }
 
     if (includesNonIdleWork(lane)) {
+      // 否则包含NonIdleLanes返回DefaultEventPriority
       return DefaultEventPriority;
     }
 
-    return IdleEventPriority;
+    return IdleEventPriority; // 全部都是IdleLanes返回优先级最低的IdleEventPriority
   }
 
   // This is imported by the event replaying implementation in React DOM. It's
@@ -6766,6 +6791,7 @@
     return null;
   }
   function getEventPriority(domEventName) {
+    // 不同的原生事件对应不同的事件优先级
     switch (domEventName) {
       // Used by SimpleEventPlugin:
       case 'cancel':
@@ -12897,6 +12923,7 @@
     return textNode;
   }
   function getCurrentEventPriority() {
+    // 根据window.event这个全局挂载的对象事件来判断当前的事件优先级
     var currentEvent = window.event;
 
     if (currentEvent === undefined) {
@@ -15104,14 +15131,21 @@
     return concurrentlyUpdatedLanes;
   }
 
-  function enqueueUpdate(fiber, queue, update, lane) {
+  function enqueueUpdate( // 把这次更新的相关信息放入concurrentQueues,更新concurrentlyUpdatedLanes以及这个fiber的lane和对应缓冲树上的lanes
+  fiber, // fiber节点
+  queue, // hook共享的queue
+  update, // update对象
+  lane) // 本次更新优先级
+  {
     // Don't update the `childLanes` on the return path yet. If we already in
     // the middle of rendering, wait until after it has completed.
-    concurrentQueues[concurrentQueuesIndex++] = fiber;
+    concurrentQueues[concurrentQueuesIndex++] = fiber; // 四个为一组，对应如下的信息
+
     concurrentQueues[concurrentQueuesIndex++] = queue;
     concurrentQueues[concurrentQueuesIndex++] = update;
     concurrentQueues[concurrentQueuesIndex++] = lane;
-    concurrentlyUpdatedLanes = mergeLanes(concurrentlyUpdatedLanes, lane); // The fiber's `lane` field is used in some places to check if any work is
+    concurrentlyUpdatedLanes = mergeLanes(concurrentlyUpdatedLanes, lane); // 更新concurrentlyUpdatedLanes
+    // The fiber's `lane` field is used in some places to check if any work is
     // scheduled, to perform an eager bailout, so we need to update it immediately.
     // TODO: We should probably move this to the "shared" queue instead.
 
@@ -15150,11 +15184,13 @@
       finishQueueingConcurrentUpdates();
     }
   }
-  function enqueueConcurrentClassUpdate(fiber, queue, update, lane) {
+  function enqueueConcurrentClassUpdate(fiber, queue, // 一个fiber节点上所有的hooks的共有状态
+  update, // 本次更新的更新对象
+  lane) {
     var concurrentQueue = queue;
     var concurrentUpdate = update;
     enqueueUpdate(fiber, concurrentQueue, concurrentUpdate, lane);
-    return getRootForUpdatedFiber(fiber);
+    return getRootForUpdatedFiber(fiber); // 返回这个fiber对应的fiberRoot
   }
   function enqueueConcurrentRenderForLane(fiber, lane) {
     enqueueUpdate(fiber, null, null, lane);
@@ -15231,12 +15267,14 @@
   }
 
   function getRootForUpdatedFiber(sourceFiber) {
+    // 给一个sourceFiber，返回对应的挂载节点上的fiberRoot(一次createRoot就对应一个fiberRoot)
     // TODO: We will detect and infinite update loop and throw even if this fiber
     // has already unmounted. This isn't really necessary but it happens to be the
     // current behavior we've used for several release cycles. Consider not
     // performing this check if the updated fiber already unmounted, since it's
     // not possible for that to cause an infinite update loop.
-    throwIfInfiniteUpdateLoopDetected(); // When a setState happens, we must ensure the root is scheduled. Because
+    throwIfInfiniteUpdateLoopDetected(); // 如果无限
+    // When a setState happens, we must ensure the root is scheduled. Because
     // update queues do not have a backpointer to the root, the only way to do
     // this currently is to walk up the return path. This used to not be a big
     // deal because we would have to walk up the return path to set
@@ -15314,6 +15352,7 @@
     }
   }
   function createUpdate(eventTime, lane) {
+    // 生成一个update对象
     var update = {
       eventTime: eventTime,
       lane: lane,
@@ -15324,15 +15363,18 @@
     };
     return update;
   }
-  function enqueueUpdate$1(fiber, update, lane) {
-    var updateQueue = fiber.updateQueue;
+  function enqueueUpdate$1( // 把update对象入concurrentQueues队等待更新,更新fiber上的lane
+  fiber, // 入队更新的fiber节点
+  update, // 更新对象
+  lane) {
+    var updateQueue = fiber.updateQueue; // fiber上的updateQueue,和hook有关，存放了状态和回调等
 
     if (updateQueue === null) {
       // Only occurs if the fiber has been unmounted.
       return null;
     }
 
-    var sharedQueue = updateQueue.shared;
+    var sharedQueue = updateQueue.shared; //shared属性，猜测应该是所有hook的共享的属性
 
     {
       if (currentlyProcessingQueue === sharedQueue && !didWarnUpdateInsideUpdate) {
@@ -15345,6 +15387,7 @@
     }
 
     if (isUnsafeClassRenderPhaseUpdate()) {
+      // 不管
       // This is an unsafe render phase update. Add directly to the update
       // queue so we can process it immediately during the current render.
       var pending = sharedQueue.pending;
@@ -24538,7 +24581,8 @@
     return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
   }
 
-  function beginWork(current, workInProgress, renderLanes) {
+  function beginWork( // 从workInProgress这个fiber节点开始构建起子fiber
+  current, workInProgress, renderLanes) {
     {
       if (workInProgress._debugNeedsRemount && current !== null) {
         // This will restart the begin phase with a new fiber.
@@ -29959,6 +30003,7 @@
     return workInProgressRootRenderLanes;
   }
   function requestEventTime() {
+    // 先不管executionContext，如果有现在的事件时间返回现在事件时间，否则返回当前时间的时间戳
     if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
       // We're inside React, so it's fine to read the actual time.
       return now();
@@ -29975,12 +30020,14 @@
     return currentEventTime;
   }
   function requestUpdateLane(fiber) {
+    // 不是concurrentmode返回syncLane,有updateLane返回updateLane，没有返回eventLane
     // Special cases
     var mode = fiber.mode;
 
     if ((mode & ConcurrentMode) === NoMode) {
       return SyncLane;
-    } else if ( (executionContext & RenderContext) !== NoContext && workInProgressRootRenderLanes !== NoLanes) {
+    } else if ( // 下面这种情况不管，官方not officialy支持
+     (executionContext & RenderContext) !== NoContext && workInProgressRootRenderLanes !== NoLanes) {
       // This is a render phase update. These are not officially supported. The
       // old behavior is to give this the same "thread" (lanes) as
       // whatever is currently rendering. So if you call `setState` on a component
@@ -29993,7 +30040,7 @@
       return pickArbitraryLane(workInProgressRootRenderLanes);
     }
 
-    var isTransition = requestCurrentTransition() !== NoTransition;
+    var isTransition = requestCurrentTransition() !== NoTransition; // transition暂时不管
 
     if (isTransition) {
       if ( ReactCurrentBatchConfig$3.transition !== null) {
@@ -30027,7 +30074,7 @@
     // TODO: Move this type conversion to the event priority module.
 
 
-    var updateLane = getCurrentUpdatePriority();
+    var updateLane = getCurrentUpdatePriority(); // 获取reconciler中的当前的currentUpdatePriority，也是事件优先级，具体怎么用之后再看
 
     if (updateLane !== NoLane) {
       return updateLane;
@@ -30039,7 +30086,8 @@
     // TODO: Move this type conversion to the event priority module.
 
 
-    var eventLane = getCurrentEventPriority();
+    var eventLane = getCurrentEventPriority(); // 根据全局挂载的event对象判断事件优先级
+
     return eventLane;
   }
 
@@ -30072,7 +30120,8 @@
     // finish loading.
 
 
-    if (workInProgressSuspendedReason === SuspendedOnData && root === workInProgressRoot) {
+    if ( // suspend先不管
+    workInProgressSuspendedReason === SuspendedOnData && root === workInProgressRoot) {
       // The incoming update might unblock the current render. Interrupt the
       // current attempt and restart from the top.
       prepareFreshStack(root, NoLanes);
@@ -30080,9 +30129,10 @@
     } // Mark that the root has a pending update.
 
 
-    markRootUpdated(root, lane, eventTime);
+    markRootUpdated(root, lane, eventTime); // 通过标记pendingLanes标记fiberroot有哪些更新的lane
 
-    if ((executionContext & RenderContext) !== NoLanes && root === workInProgressRoot) {
+    if ( // 执行上下文包括RenderContext，第一次渲染executionContext为0先不管
+    (executionContext & RenderContext) !== NoLanes && root === workInProgressRoot) {
       // This update was dispatched during the render phase. This is a mistake
       // if the update originates from user space (with the exception of local
       // hook updates, which are handled differently and don't reach this
@@ -30093,6 +30143,7 @@
       // This is a normal update, scheduled from outside the render phase. For
       // example, during an input event.
       {
+        // 不管
         if (isDevToolsPresent) {
           addFiberToLanesMap(root, fiber, lane);
         }
@@ -30101,6 +30152,7 @@
       warnIfUpdatesNotWrappedWithActDEV(fiber);
 
       if (root === workInProgressRoot) {
+        // 先不管
         // Received an update to a tree that's in the middle of rendering. Mark
         // that there was an interleaved update work on this root. Unless the
         // `deferRenderPhaseUpdateToNextBatch` flag is off and this is a render
@@ -30164,6 +30216,7 @@
   // exiting a task.
 
   function ensureRootIsScheduled(root, currentTime) {
+    // 为一个fiberRoot调度一个task,一个fiber root只有一个task，如果已经有task再调度，那么我们会检查优先级
     var existingCallbackNode = root.callbackNode; // Check if any lanes are being starved by other work. If so, mark them as
     // expired so we know to work on those next.
 
@@ -30172,9 +30225,10 @@
     var nextLanes = getNextLanes(root, root === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes);
 
     if (nextLanes === NoLanes) {
+      // 如果nextLanes为空就去执行existingCallbackNode
       // Special case: There's nothing to work on.
       if (existingCallbackNode !== null) {
-        cancelCallback$1(existingCallbackNode);
+        cancelCallback$1(existingCallbackNode); // 在scheduler中取消回调
       }
 
       root.callbackNode = null;
@@ -30252,6 +30306,7 @@
       var schedulerPriorityLevel;
 
       switch (lanesToEventPriority(nextLanes)) {
+        // 将lane优先级先转为事件优先级，再和schedule调度优先级做对应
         case DiscreteEventPriority:
           schedulerPriorityLevel = ImmediatePriority;
           break;
@@ -30273,10 +30328,14 @@
           break;
       }
 
-      newCallbackNode = scheduleCallback$2(schedulerPriorityLevel, performConcurrentWorkOnRoot.bind(null, root));
+      newCallbackNode = scheduleCallback$2( // 注册调度器
+      schedulerPriorityLevel, // 通过lane计算出来的schedulerPriorityLevel
+      performConcurrentWorkOnRoot.bind(null, root) // 传入了performConcurrentWorkOnRoot函数为cb进行调度
+      );
     }
 
-    root.callbackPriority = newCallbackPriority;
+    root.callbackPriority = newCallbackPriority; // 把本次正在执行的newCallbackPriority和newCallbackNode绑定到root上
+
     root.callbackNode = newCallbackNode;
   } // This is the entry point for every concurrent task, i.e. anything that
   // goes through Scheduler.
@@ -30299,7 +30358,7 @@
 
 
     var originalCallbackNode = root.callbackNode;
-    var didFlushPassiveEffects = flushPassiveEffects();
+    var didFlushPassiveEffects = flushPassiveEffects(); //  刷新pending状态的effects, 有可能某些effect会取消本次任务
 
     if (didFlushPassiveEffects) {
       // Something in the passive effect phase may have canceled the current task.
@@ -30404,7 +30463,7 @@
       }
     }
 
-    ensureRootIsScheduled(root, now());
+    ensureRootIsScheduled(root, now()); // 退出前再次检测, 是否还有其他更新, 是否需要发起新调度
 
     if (root.callbackNode === originalCallbackNode) {
       // The task node scheduled for this root is the same one that's
@@ -31740,7 +31799,8 @@
     // So we can clear these now to allow a new callback to be scheduled.
 
 
-    root.callbackNode = null;
+    root.callbackNode = null; // 清空FiberRoot对象上的属性
+
     root.callbackPriority = NoLane; // Check which lanes no longer have any work scheduled on them, and mark
     // those as finished.
 
@@ -32017,6 +32077,7 @@
     // `Scheduler.runWithPriority`, which accepts a function. But now we track the
     // priority within React itself, so we can mutate the variable directly.
     if (rootWithPendingPassiveEffects !== null) {
+      // 先不管，第一次rootWithPendingPassiveEffects为null
       // Cache the root since rootWithPendingPassiveEffects is cleared in
       // flushPassiveEffectsImpl
       var root = rootWithPendingPassiveEffects; // Cache and clear the remaining lanes flag; it must be reset since this
@@ -32646,6 +32707,7 @@
         actQueue.push(callback);
         return fakeActCallbackNode;
       } else {
+        // 先不管actQueue，都以生产环境的来读
         return scheduleCallback(priorityLevel, callback);
       }
     }
@@ -33224,9 +33286,13 @@
   //    compatible.
 
 
-  var createFiber = function (tag, pendingProps, key, mode) {
+  var createFiber = function ( // 生成一个fiber节点的函数
+  tag, // 代表这个节点是什么类型的，比如是函数节点？一颗fiber tree根节点？
+  pendingProps, // 暂时不知道，在创建rootFiber的时候为null
+  key, // key属性
+  mode) {
     // $FlowFixMe: the shapes are exact here but Flow doesn't like constructors
-    return new FiberNode(tag, pendingProps, key, mode);
+    return new FiberNode(tag, pendingProps, key, mode); // 调用FiberNode构造函数，绑定初始化各种属性
   };
 
   function shouldConstruct$1(Component) {
@@ -33414,7 +33480,7 @@
     var mode;
 
     if (tag === ConcurrentRoot) {
-      mode = ConcurrentMode;
+      mode = ConcurrentMode; // 如果tag为concurrent, mode也为concurrent，只需要知道这个即可，后面的暂时不用管
 
       if (isStrictMode === true || createRootStrictEffectsByDefault) {
         mode |= StrictLegacyMode | StrictEffectsMode;
@@ -33803,15 +33869,21 @@
   // single type, like a DynamicHostConfig that is defined by the renderer.
   identifierPrefix, onRecoverableError, transitionCallbacks) {
     // $FlowFixMe[invalid-constructor] Flow no longer supports calling new on functions
-    var root = new FiberRootNode(containerInfo, tag, hydrate, identifierPrefix, onRecoverableError);
+    var root = new FiberRootNode( // 通过new生成了一个fiberRoot实例，上面挂载了对应的方法，具体的属性之后用到了再看
+    containerInfo, // 绑定挂载的html元素
+    tag, // 0或者1，现在只有legacy root和concurrent root , ConcurrentRoot为1，默认开启所有的功能
+    hydrate, identifierPrefix, onRecoverableError);
     // stateNode is any.
 
 
-    var uninitializedFiber = createHostRootFiber(tag, isStrictMode);
-    root.current = uninitializedFiber;
-    uninitializedFiber.stateNode = root;
+    var uninitializedFiber = createHostRootFiber( // 新建一个RootFiber(一颗fiber tree的根节点)也叫hostRootFiber
+    tag, isStrictMode);
+    root.current = uninitializedFiber; // fiberRoot的current属性指向这个fiber root根节点
+
+    uninitializedFiber.stateNode = root; // 把这个rootFiber的stateNode指向fiberRoot
 
     {
+      // 默认开启缓存
       var initialCache = createCache();
       retainCache(initialCache); // The pooledCache is a fresh cache instance that is used temporarily
       // for newly mounted boundaries during a render. In general, the
@@ -33821,14 +33893,18 @@
       // cache is distinct from the main memoizedState.cache, it must be
       // retained separately.
 
-      root.pooledCache = initialCache;
-      retainCache(initialCache);
+      root.pooledCache = initialCache; // 把这个缓存池放在fiberroot的pooledCache上
+
+      retainCache(initialCache); // 暂时不管
+
       var initialState = {
         element: initialChildren,
+        // reactElement,即rootFiber上的reactElechildren
         isDehydrated: hydrate,
+        // 不管，不是ssr都是false
         cache: initialCache
       };
-      uninitializedFiber.memoizedState = initialState;
+      uninitializedFiber.memoizedState = initialState; // 把initialState放在rootFiber的memoizedState中
     }
 
     initializeUpdateQueue(uninitializedFiber);
@@ -33873,10 +33949,12 @@
 
   function getContextForSubtree(parentComponent) {
     if (!parentComponent) {
+      // 没有父reactEle返回空{}
       return emptyContextObject;
     }
 
-    var fiber = get(parentComponent);
+    var fiber = get(parentComponent); // g=
+
     var parentContext = findCurrentUnmaskedContext(fiber);
 
     if (fiber.tag === ClassComponent) {
@@ -33940,10 +34018,12 @@
     }
   }
 
-  function createContainer(containerInfo, tag, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError, transitionCallbacks) {
+  function createContainer( // 实际调用createfiberoot返回fiberrrot
+  containerInfo, tag, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError, transitionCallbacks) {
     var hydrate = false;
     var initialChildren = null;
-    return createFiberRoot(containerInfo, tag, hydrate, initialChildren, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
+    return createFiberRoot( // 创建fiberroot
+    containerInfo, tag, hydrate, initialChildren, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
   }
   function createHydrationContainer(initialChildren, // TODO: Remove `callback` when we delete legacy mode.
   callback, containerInfo, tag, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError, transitionCallbacks) {
@@ -33966,22 +34046,28 @@
     scheduleInitialHydrationOnRoot(root, lane, eventTime);
     return root;
   }
-  function updateContainer(element, container, parentComponent, callback) {
+  function updateContainer( // 传入本次更新的fiberRoot,以及新的reacEle对象，送入scheduel
+  element, // reactElement对象，为要挂载的reactEle对象
+  container, // fiberRoot对象，实际上之用到了current指向的rootFiber
+  parentComponent, callback) {
     {
       onScheduleRoot(container, element);
     }
 
     var current$1 = container.current;
-    var eventTime = requestEventTime();
-    var lane = requestUpdateLane(current$1);
+    var eventTime = requestEventTime(); // 获取当前事件戳
+
+    var lane = requestUpdateLane(current$1); // 根据rootfiber获取lane优先级
 
     {
+      // 先不管
       markRenderScheduled(lane);
     }
 
-    var context = getContextForSubtree(parentComponent);
+    var context = getContextForSubtree(parentComponent); // 获取parentCompoent的context,第一次为空的{}
 
     if (container.context === null) {
+      // 如果fiberroot上的context为null，就赋初值
       container.context = context;
     } else {
       container.pendingContext = context;
@@ -33995,15 +34081,18 @@
       }
     }
 
-    var update = createUpdate(eventTime, lane); // Caution: React DevTools currently depends on this property
+    var update = createUpdate(eventTime, lane); // 新建一个update对象
+    // Caution: React DevTools currently depends on this property
     // being called "element".
 
     update.payload = {
       element: element
-    };
+    }; // 把reactEle放在payload中
+
     callback = callback === undefined ? null : callback;
 
     if (callback !== null) {
+      // 有cb在update中存入cb
       {
         if (typeof callback !== 'function') {
           error('render(...): Expected the last optional `callback` argument to be a ' + 'function. Instead received: %s.', callback);
@@ -34013,10 +34102,11 @@
       update.callback = callback;
     }
 
-    var root = enqueueUpdate$1(current$1, update, lane);
+    var root = enqueueUpdate$1(current$1, update, lane); // 把这个更新加入concurrentQueues更新队列，返回对应的fiberRoot
 
     if (root !== null) {
-      scheduleUpdateOnFiber(root, current$1, lane, eventTime);
+      scheduleUpdateOnFiber(root, current$1, lane, eventTime); // 注册这个update到调度器更新
+
       entangleTransitions(root, current$1, lane);
     }
 
@@ -34446,8 +34536,9 @@
   } // $FlowFixMe[prop-missing] found when upgrading Flow
 
 
-  ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function (children) {
-    var root = this._internalRoot;
+  ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function ( // 给外部调用的render方法绑定在原型链上
+  children) {
+    var root = this._internalRoot; // _internalRoot指向fiberRoot
 
     if (root === null) {
       throw new Error('Cannot update an unmounted root.');
@@ -34508,6 +34599,7 @@
     var transitionCallbacks = null;
 
     if (options !== null && options !== undefined) {
+      //根据options调整上面的参数不用管
       {
         if (options.hydrate) {
           warn('hydrate through createRoot is deprecated. Use ReactDOMClient.hydrateRoot(container, <App />) instead.');
@@ -34535,18 +34627,22 @@
       }
     }
 
-    var root = createContainer(container, ConcurrentRoot, null, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
-    markContainerAsRoot(root.current, container);
+    var root = createContainer( // 返回fiberRoot(整个 React 应用的根基,每调用一次createRoot只有一个fiberroot)
+    container, ConcurrentRoot, null, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
+    markContainerAsRoot(root.current, container); // 把container(DOM节点上的__reactContainer$属性指向fiberroot.current，即新生成的rrotfiber节点)
 
     {
+      // 默认为true
       // Set the default dispatcher to the client dispatcher
-      Dispatcher$1.current = ReactDOMClientDispatcher;
+      Dispatcher$1.current = ReactDOMClientDispatcher; // 先不管
     }
 
-    var rootContainerElement = container.nodeType === COMMENT_NODE ? container.parentNode : container;
-    listenToAllSupportedEvents(rootContainerElement); // $FlowFixMe[invalid-constructor] Flow no longer supports calling new on functions
+    var rootContainerElement = container.nodeType === COMMENT_NODE ? container.parentNode : container; // 获取真正的DOM container
 
-    return new ReactDOMRoot(root);
+    listenToAllSupportedEvents(rootContainerElement); // 把react支持的事件监听都挂载到这个DOM ele上
+    // $FlowFixMe[invalid-constructor] Flow no longer supports calling new on functions
+
+    return new ReactDOMRoot(root); // 返回一个ReactDOMRoot节点，这个节点的_internalRoot指向fiberRoot
   }
 
   function ReactDOMHydrationRoot(internalRoot) {
@@ -34983,8 +35079,10 @@
     return unstable_renderSubtreeIntoContainer(parentComponent, element, containerNode, callback);
   }
 
-  function createRoot$1(container, options) {
+  function createRoot$1( // 给外部调用，作用是返回一个ReactDOMRoot，这个实例的_internalRoot指向fiberRoot,render方法在ReactDOMRoot的原型上
+  container, options) {
     {
+      // 所有的_DEV__的代码不管
       if (!Internals.usingClientEntryPoint && !true) {
         error('You are importing createRoot from "react-dom" which is not supported. ' + 'You should instead import it from "react-dom/client".');
       }
