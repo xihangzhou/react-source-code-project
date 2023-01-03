@@ -39,3 +39,10 @@
 .read-the-docs {
   color: #888;
 }
+
+.ball{
+  width: 10px;
+  height: 10px;
+  background-color: aqua;
+  float: left;
+}
